@@ -104,14 +104,23 @@
       flex-shrink: 0;
     }
     
-    .chat-item {
-      padding: 8px;
-      border-bottom: 1px solid #eee;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      word-break: break-word;
-    }
+  .chat-item {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    word-break: break-word;
+    transition: opacity 0.3s ease, transform 0.3s ease; /* ✅ ADD THIS */
+  }
+
+  .chat-item.deleting {
+    opacity: 0.5;
+    transform: translateX(-10px);
+    background: #fff3cd;
+    transition: all 0.3s ease;
+  }
+    
     
     .chat-item:last-child {
       border-bottom: none;

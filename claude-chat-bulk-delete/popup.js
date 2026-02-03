@@ -99,6 +99,7 @@ function displayChats() {
   chats.forEach((chat, index) => {
     const chatItem = document.createElement('div');
     chatItem.className = 'chat-item';
+    chatItem.dataset.chatId = chat.id; // ✅ ADD: Store chat ID on the item for easier removal
     
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
@@ -140,7 +141,7 @@ deselectAllButton.addEventListener('click', () => {
   updateDeleteButton();
 });
 
-// Delete selected chats
+// ✅ NEW: Delete selected chats with REAL-TIME PROGRESS
 deleteButton.addEventListener('click', async () => {
   const checkboxes = Array.from(chatList.querySelectorAll('input[type="checkbox"]:checked'));
   
@@ -150,52 +151,147 @@ deleteButton.addEventListener('click', async () => {
   
   if (!confirmDelete) return;
   
+  // Disable all buttons
   deleteButton.disabled = true;
   selectAllButton.disabled = true;
   deselectAllButton.disabled = true;
   scanButton.disabled = true;
-  
-  showStatus(`Deleting ${checkboxes.length} chats...`, 'info');
   
   const chatIds = checkboxes.map(cb => ({
     id: cb.dataset.chatId,
     href: cb.dataset.href
   }));
   
+  const totalChats = chatIds.length;
+  let successCount = 0;
+  let failedCount = 0;
+  const errors = [];
+  
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     
-    const result = await chrome.scripting.executeScript({
+    // ✅ STEP 1: Try bulk delete first
+    showStatus(`Attempting bulk delete of ${totalChats} chats...`, 'info');
+    
+    const bulkResult = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      function: deleteChatsOnPage,
+      function: tryBulkDelete,
       args: [chatIds]
     });
     
-    const deleteResult = result[0].result;
+    const bulkSuccess = bulkResult[0].result;
     
-    if (!deleteResult.success) {
-      showStatus(deleteResult.message || 'Failed to delete chats', 'error');
+    // If bulk delete succeeded, we're done!
+    if (bulkSuccess.success && bulkSuccess.method === 'bulk') {
+      successCount = totalChats;
+      
+      showStatus(`Successfully deleted ${totalChats} chat(s) (bulk API)`, 'success');
+      
+      // Remove all deleted chats from UI
+      checkboxes.forEach(cb => {
+        const chatItem = cb.closest('.chat-item');
+        if (chatItem) chatItem.remove();
+      });
+      
+      // Update chats array
+      const deletedIds = new Set(chatIds.map(c => c.id));
+      chats = chats.filter(chat => !deletedIds.has(chat.id));
+      
+      if (chats.length === 0) {
+        chatListContainer.classList.add('hidden');
+      }
+      
+      updateDeleteButton();
+      
+      // Re-enable buttons
+      selectAllButton.disabled = false;
+      deselectAllButton.disabled = false;
+      scanButton.disabled = false;
+      
       return;
     }
     
-    const deletedCount = deleteResult.count;
-    const method = deleteResult.method === 'bulk' ? ' (bulk)' : '';
+    // ✅ STEP 2: Bulk failed, delete individually with REAL-TIME PROGRESS
+    showStatus('Bulk delete not available, deleting individually...', 'info');
     
-    showStatus(`Successfully deleted ${deletedCount} chat(s)${method}`, 'success');
-    
-    if (deleteResult.errors && deleteResult.errors.length > 0) {
-      console.warn('Some chats failed to delete:', deleteResult.errors);
-      showStatus(`Deleted ${deletedCount} chats, ${deleteResult.errors.length} failed`, 'error');
+    // Delete chats one by one
+    for (let i = 0; i < totalChats; i++) {
+      const chat = chatIds[i];
+      
+      // Update status with current progress
+      showStatus(
+        `Deleting chat ${i + 1}/${totalChats}... (${successCount} succeeded, ${failedCount} failed)`,
+        'info'
+      );
+      
+      try {
+        // Delete single chat
+        const deleteResult = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          function: deleteSingleChat,
+          args: [chat.id]
+        });
+        
+        const result = deleteResult[0].result;
+        
+        if (result.success) {
+          successCount++;
+          console.log(`✓ Deleted chat ${i + 1}/${totalChats}: ${chat.id}`);
+          
+          // ✅ Remove from UI immediately for visual feedback
+          const chatItem = document.querySelector(`.chat-item[data-chat-id="${chat.id}"]`);
+        if (chatItem) {
+            // Add 'deleting' class for smooth transition
+            chatItem.classList.add('deleting');
+            
+            // After transition, fade out completely and remove
+            setTimeout(() => {
+              chatItem.style.opacity = '0';
+              setTimeout(() => {
+                if (chatItem.parentNode) {
+                  chatItem.remove();
+                }
+              }, 300);
+            }, 100);
+          }
+          
+        } else {
+          failedCount++;
+          errors.push({ id: chat.id, error: result.error });
+          console.error(`✗ Failed to delete chat ${i + 1}/${totalChats}: ${chat.id}`, result.error);
+        }
+        
+      } catch (error) {
+        failedCount++;
+        errors.push({ id: chat.id, error: error.message });
+        console.error(`✗ Error deleting chat ${i + 1}/${totalChats}:`, error);
+      }
+      
+      // Small delay between deletions to avoid rate limiting
+      if (i < totalChats - 1) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
     }
     
-    // Remove deleted chats from the list
-    checkboxes.forEach(cb => {
-      const chatItem = cb.closest('.chat-item');
-      chatItem.remove();
-    });
+    // ✅ STEP 3: Show final results
+    if (failedCount === 0) {
+      showStatus(`Successfully deleted all ${successCount} chat(s)!`, 'success');
+    } else if (successCount > 0) {
+      showStatus(
+        `Deleted ${successCount} chat(s), ${failedCount} failed. Check console for details.`,
+        'error'
+      );
+      console.error('Failed deletions:', errors);
+    } else {
+      showStatus(`Failed to delete all ${totalChats} chat(s). Check console for details.`, 'error');
+      console.error('Failed deletions:', errors);
+    }
     
-    // Update the chats array
-    const deletedIds = new Set(chatIds.map(c => c.id));
+    // Update the chats array (remove successfully deleted ones)
+    const successfulIds = chatIds
+      .filter((_, index) => index < successCount)
+      .map(c => c.id);
+    const deletedIds = new Set(successfulIds);
     chats = chats.filter(chat => !deletedIds.has(chat.id));
     
     if (chats.length === 0) {
@@ -204,27 +300,29 @@ deleteButton.addEventListener('click', async () => {
     
     updateDeleteButton();
     
-    // Suggest page refresh to see changes
-    setTimeout(() => {
-      showStatus('Tip: Refresh the page to see updated chat list', 'info');
-    }, 3000);
+    // Suggest page refresh
+    if (successCount > 0) {
+      setTimeout(() => {
+        showStatus('Tip: Refresh claude.ai to see the updated chat list', 'info');
+      }, 3000);
+    }
     
   } catch (error) {
-    showStatus(`Error deleting chats: ${error.message}`, 'error');
-    console.error(error);
+    showStatus(`Error: ${error.message}`, 'error');
+    console.error('Delete error:', error);
   }
   
+  // Re-enable buttons
   selectAllButton.disabled = false;
   deselectAllButton.disabled = false;
   scanButton.disabled = false;
 });
 
-// Function that runs in the page context to delete chats using the API
-async function deleteChatsOnPage(chatIds) {
-  // First, get the organization ID from the page
+// ✅ NEW: Function to try bulk delete (runs in page context)
+async function tryBulkDelete(chatIds) {
   let organizationId = null;
   
-  // Try to extract from localStorage or page data
+  // Try to get organization ID from localStorage
   try {
     const localStorageData = localStorage.getItem('claude_user_data') || localStorage.getItem('user');
     if (localStorageData) {
@@ -235,18 +333,16 @@ async function deleteChatsOnPage(chatIds) {
     console.log('Could not get org ID from localStorage:', e);
   }
   
-  // Try to extract from the current URL or page state
+  // Try to get from window state
   if (!organizationId) {
-    // Check if we can get it from window.__INITIAL_STATE__ or similar
     if (window.__INITIAL_STATE__ && window.__INITIAL_STATE__.organization) {
       organizationId = window.__INITIAL_STATE__.organization.id;
     }
   }
   
-  // Try to get from API calls in network tab by making a test request
+  // Try to get from API
   if (!organizationId) {
     try {
-      // Try to fetch conversations list to get the org ID from the response headers or URL
       const testResponse = await fetch('https://claude.ai/api/organizations');
       if (testResponse.ok) {
         const orgs = await testResponse.json();
@@ -261,14 +357,16 @@ async function deleteChatsOnPage(chatIds) {
   
   if (!organizationId) {
     console.error('Could not determine organization ID');
-    return { success: false, message: 'Could not determine organization ID. Please check the console for instructions.' };
+    return { success: false, message: 'Could not find organization ID' };
   }
   
-  // Use bulk delete API if available (more efficient)
-  const conversationUuids = chatIds.map(chat => chat.id);
+  console.log(`Found organization ID: ${organizationId}`);
   
+  // Try bulk delete
   try {
-    // Try the bulk delete endpoint first
+    const conversationUuids = chatIds.map(chat => chat.id);
+    console.log(`Attempting bulk delete of ${conversationUuids.length} chats...`);
+    
     const bulkResponse = await fetch(
       `https://claude.ai/api/organizations/${organizationId}/chat_conversations/delete_many`,
       {
@@ -283,53 +381,84 @@ async function deleteChatsOnPage(chatIds) {
     );
     
     if (bulkResponse.ok) {
+      console.log('✓ Bulk delete successful!');
       return { 
         success: true, 
         count: conversationUuids.length,
         method: 'bulk'
       };
     } else {
-      console.log('Bulk delete failed, falling back to individual deletes');
+      const errorText = await bulkResponse.text();
+      console.log('Bulk delete failed:', errorText);
+      return { success: false, method: 'individual' };
     }
   } catch (error) {
-    console.log('Bulk delete error, falling back to individual deletes:', error);
+    console.log('Bulk delete error:', error);
+    return { success: false, method: 'individual' };
+  }
+}
+
+// ✅ NEW: Function to delete a single chat (runs in page context)
+async function deleteSingleChat(chatId) {
+  let organizationId = null;
+  
+  // Try to get organization ID from localStorage
+  try {
+    const localStorageData = localStorage.getItem('claude_user_data') || localStorage.getItem('user');
+    if (localStorageData) {
+      const userData = JSON.parse(localStorageData);
+      organizationId = userData.organization_id || userData.organizationId;
+    }
+  } catch (e) {
+    console.log('Could not get org ID from localStorage:', e);
   }
   
-  // Fallback: Delete individually
-  let deletedCount = 0;
-  const errors = [];
-  
-  for (const chat of chatIds) {
-    try {
-      const response = await fetch(
-        `https://claude.ai/api/organizations/${organizationId}/chat_conversations/${chat.id}`,
-        {
-          method: 'DELETE'
-        }
-      );
-      
-      if (response.ok) {
-        deletedCount++;
-        console.log(`Successfully deleted conversation: ${chat.id}`);
-      } else {
-        const errorText = await response.text();
-        console.error(`Failed to delete conversation ${chat.id}:`, errorText);
-        errors.push({ id: chat.id, error: errorText });
-      }
-      
-      // Small delay between requests to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-    } catch (error) {
-      console.error(`Error deleting chat ${chat.id}:`, error);
-      errors.push({ id: chat.id, error: error.message });
+  // Try to get from window state
+  if (!organizationId) {
+    if (window.__INITIAL_STATE__ && window.__INITIAL_STATE__.organization) {
+      organizationId = window.__INITIAL_STATE__.organization.id;
     }
   }
   
-  return { 
-    success: deletedCount > 0,
-    count: deletedCount,
-    errors: errors,
-    method: 'individual'
-  };
+  // Try to get from API
+  if (!organizationId) {
+    try {
+      const testResponse = await fetch('https://claude.ai/api/organizations');
+      if (testResponse.ok) {
+        const orgs = await testResponse.json();
+        if (orgs && orgs.length > 0) {
+          organizationId = orgs[0].uuid || orgs[0].id;
+        }
+      }
+    } catch (e) {
+      console.log('Could not get org ID from API:', e);
+    }
+  }
+  
+  if (!organizationId) {
+    console.error('Could not determine organization ID');
+    return { success: false, error: 'No organization ID found' };
+  }
+  
+  // Delete single chat
+  try {
+    const response = await fetch(
+      `https://claude.ai/api/organizations/${organizationId}/chat_conversations/${chatId}`,
+      {
+        method: 'DELETE'
+      }
+    );
+    
+    if (response.ok) {
+      return { success: true };
+    } else {
+      const errorText = await response.text();
+      return { success: false, error: errorText || `HTTP ${response.status}` };
+    }
+  } catch (error) {
+    return { success: false, error: error.message || 'Network error' };
+  }
 }
+
+// ⚠️ REMOVED: Old deleteChatsOnPage function - no longer needed
+// We now use tryBulkDelete + deleteSingleChat for better progress tracking
