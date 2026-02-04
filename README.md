@@ -1,4 +1,4 @@
-cat > README.md << EOF
+
 # Claude Chat Bulk Delete
 
 Chrome extension for bulk deleting conversations on claude.ai.
@@ -53,7 +53,7 @@ This extension does not collect or transmit any data. All operations happen loca
 
 ## License
 
-MIT License - feel free to modify and distribute
+Note: This project is Source-Available, not Open Source. Redistribution in any form is strictly prohibited. See LICENSE for details.
 
 ## Disclaimer
 

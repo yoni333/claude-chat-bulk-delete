@@ -1,0 +1,39 @@
+PROPRIETARY SOURCE-AVAILABLE LICENSE
+Copyright (c) 2026 [Your Name / Username] Project Name: Claude Chat Bulk Delete
+
+1. Grant of License
+Permission is hereby granted to any person obtaining a copy of the software
+ "Claude Chat Bulk Delete" and associated documentation files (the "Software"), 
+ to view the source code and modify it solely for personal, private, 
+ and non-redistributable use.
+
+2. Restrictions
+The following actions are strictly prohibited under this license:
+
+No Redistribution: You may not redistribute, sub-license, rent, lease, 
+or lend the Software (original or modified), in whole or in part, to any third party,
+ whether for free or for commercial gain.
+
+No Public Hosting: You may not host the source code on public repositories 
+(e.g., public GitHub forks), websites, or any platform where it can be accessed or z
+downloaded by the public.
+
+No Commercial Use: You may not use the Software or any derivative works for commercial 
+purposes without explicit written consent from the author.
+
+3. Ownership
+The Software, including all original source code and any modifications made by the User,
+ remains the intellectual property of the original author. No title or ownership of the 
+ Software is transferred under this license.
+
+4. Termination
+This license terminates automatically if you breach any of these terms. Upon termination,
+ you must destroy all copies of the Software in your possession.
+
+5. Disclaimer of Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+ PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE 
+ LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
+ TORT, OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+  OR OTHER DEALINGS IN THE SOFTWARE.
